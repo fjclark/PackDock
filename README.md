@@ -1,5 +1,60 @@
 # PackDock: a Diffusion Based Side Chain Packing Model for Flexible Protein-Ligand Docking 
 
+# How to Get this Running...
+
+- Build environment - see `env.yaml` for my exact working environment. Roughly, I followed Asma's install:
+
+```bash
+conda create --name packdock python=3.8
+conda activate packdock
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+python -c "import torch; print(torch.__version__)"
+pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
+conda install conda-forge::openbabel
+python -m pip install PyYAML scipy "networkx[default]" biopython rdkit-pypi e3nn spyrmsd pandas biopandas
+```
+Then added:
+```bash
+mamba install wandb
+mamba install "pandas<2"
+```
+because the code breaks with pandas2+ due to the removal of the `append` method for dataframes. Also, make sure [these lines](https://github.com/Zhang-Runze/PackDock/blob/aa4ade6985ef242d9622375a9431e8a59d506673/utils/utils.py#L397) point to your gnina if running the gnina script. Also, download and unzip the model weights from zenodo (link in orginal instructions).
+
+- Some comments on various broken things in the code.
+    - The code tends to catch errors, then ignore them e.g. [here](https://github.com/Zhang-Runze/PackDock/blob/aa4ade6985ef242d9622375a9431e8a59d506673/docking_evaluate_gnina_apo.py#L358). It's best to remove the try/ except blocks which catch everything because this makes things much harder to debug.
+    - [`randomize_position`](https://github.com/Zhang-Runze/PackDock/blob/aa4ade6985ef242d9622375a9431e8a59d506673/utils/sampling.py#L10) takes three positional arguments, but is called in the gnina script with 4. I've fixed this.
+    - This line in [`set_time`](https://github.com/Zhang-Runze/PackDock/blob/aa4ade6985ef242d9622375a9431e8a59d506673/utils/diffusion_utils.py#L73) adds the key "ligand" to the complex graph, which breaks things later if it's not already there. I've fixed this.
+    - Many other broken things.
+
+- What I've tried and where I've got to.
+    - Running the original `apo2holo_datasets`. Running the original `get_pocket.py` with the original input, because the aligned inputs are not provided, and empty files are created. To fix this, you need to align the proteins to `refined.pdb` - see example commented out in `get_pocket.py`. After aligning, the script runs a couple of ligands before breaking due to an unregocnised atom. I ignored this and modified `docking_evaluate_gnina_apo.py` to run with a single working ligand (run with `python docking_evaluate_gnina_apo.py --rmsd`). This runs for a while until I hit:
+    ```Traceback (most recent call last):
+    File "docking_evaluate_gnina_apo.py", line 398, in <module>
+        packing_result_path = side_chain_packing(complex_graphs)
+    File "docking_evaluate_gnina_apo.py", line 203, in side_chain_packing
+        data_list, confidence = sampling(data_list=data_list, model=model,
+    File "/home/campus.ncl.ac.uk/nfc78/software/devel/PackDock/utils/sampling.py", line 44, in sampling
+        side_score = model(complex_graph_batch)
+    File "/home/campus.ncl.ac.uk/nfc78/miniforge3/envs/packdock/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+        return self._call_impl(*args, **kwargs)
+    File "/home/campus.ncl.ac.uk/nfc78/miniforge3/envs/packdock/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+        return forward_call(*args, **kwargs)
+    File "/home/campus.ncl.ac.uk/nfc78/software/devel/PackDock/models/all_atom_score_model.py", line 228, in forward
+        lig_node_attr, lig_edge_index, lig_edge_attr, lig_edge_sh = self.build_lig_conv_graph(data)
+    File "/home/campus.ncl.ac.uk/nfc78/software/devel/PackDock/models/all_atom_score_model.py", line 325, in build_lig_conv_graph
+        data['ligand'].node_sigma_emb = self.timestep_emb_func(data['ligand'].node_t['t'])
+    File "/home/campus.ncl.ac.uk/nfc78/miniforge3/envs/packdock/lib/python3.8/site-packages/torch_geometric/data/storage.py", line 96, in __getattr__
+        raise AttributeError(
+    AttributeError: 'NodeStorage' object has no attribute 'node_t'
+    ```
+    See current output in `results/1wfcA_3HA8A`
+
+    - Running the MERS input (copied from original Polaris submission -see [here](https://github.com/michellab/polaris-poses-challenge-fegrow-a3fe/tree/main/mers-040225/input/full_run-MERS)). I modified `get_pocket.py` and the layout of the input data to match what the script expects, and this appeared to process fine. However, PackDock raises an error if for `HID/P/E` residues, so I changed these all to `HIS` before extracting the pocket. Also, PackDock seems to only take deprotonated input, so I converted the renamed pdb with `obabel protein_his_renamed.pdb -O protein.pdb -d` (otherwise the pocket pdb is deprotonated while the original is protonated, which produces errors to do with finding rotatable torsions). I then ran this with `python docking_evaluate_gnina_apo_mers.py --rmsd`. This produces the same error as above.
+
+- Comment - it's helpful to run scripts with `python -i -m pdb script.py` as this will put you into the interactive debugg
+
+
+
 
 This repo contains a PyTorch implementation for the paper  PackDock: a Diffusion Based Side Chain Packing Model for Flexible Protein-Ligand Docking 
 

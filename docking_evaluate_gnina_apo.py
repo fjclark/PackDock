@@ -152,7 +152,7 @@ def protein_side_chain_packing(original_data_list, save_visualisation = args.sav
     for orig_complex_graph in original_data_list:
         for _ in range(6):
             data_list.append(copy.deepcopy(orig_complex_graph))
-    randomize_position(data_list, False, False, False)
+    randomize_position(data_list, False, False)
     confidence_data_list = None
     if save_visualisation:
         visualization_list = []
@@ -187,7 +187,7 @@ def side_chain_packing(original_data_list, save_visualisation = args.save_visual
     for orig_complex_graph in original_data_list:
         for _ in range(6):
             data_list.append(copy.deepcopy(orig_complex_graph))
-    randomize_position(data_list, False, False, False)
+    randomize_position(data_list, False, False)
     confidence_data_list = None
     if save_visualisation:
         visualization_list = []
@@ -328,11 +328,9 @@ confidence_model = None
 confidence_args = None
 confidence_model_args = None
 side_schedule = get_t_schedule(inference_steps=args.inference_steps)
-os.chdir("./PackDock")
-group = "group1"
-all_apo_df = pd.read_csv(f"./data/Apo_Holo_fulldata_aligned_pocket_{group}_12a/Apo_Holo_fulldata_aligned_pocket_{group}_12a.txt")
+group = "group3"
 
-for apo_id in tqdm(all_apo_df['apo_id']):   
+for apo_id in ["1wfcA_3HA8A"]:
     start_time = time.time()
     p_id = apo_id.split("_")[0]
     l_id = apo_id.split("_")[1]
@@ -353,82 +351,75 @@ for apo_id in tqdm(all_apo_df['apo_id']):
     output_dataframe = f"{out_path}/1_dockingscores.csv"
 
     if not os.path.exists(output_dataframe):
-        max_attempts = 5 
-        attempt = 1 
-        while attempt <= max_attempts:
 
-            try:
-                lig = Chem.MolFromPDBFile(ori_LIG_pdb_file, sanitize=True, removeHs=True) 
-                if not os.path.exists(out_path):
-                    os.system("mkdir "+out_path)
-                protein_path = f"./data/Apo_Holo_fulldata_aligned_pocket_{group}_12a/{apo_id}/protein_pocket.pdb"
+        lig = Chem.MolFromPDBFile(ori_LIG_pdb_file, sanitize=True, removeHs=True) 
+        if not os.path.exists(out_path):
+            os.system("mkdir "+out_path)
+        protein_path = f"./data/Apo_Holo_fulldata_aligned_pocket_{group}_12a/{apo_id}/protein_pocket.pdb"
 
-                """Conformational selection stage"""
-                protein_graphs = construct_protein_graph(ori_protein_path)
-                packing_result_path = protein_side_chain_packing(protein_graphs)
-                protein_docking_dataframes = []
+        """Conformational selection stage"""
+        protein_graphs = construct_protein_graph(ori_protein_path)
+        packing_result_path = protein_side_chain_packing(protein_graphs)
+        protein_docking_dataframes = []
+        # os.chdir(os.path.dirname(__file__))
+        loop_num = 0 
+        for idx, packing_protein_path in enumerate(packing_result_path):
+            protein_path = extract_protein_packing_state(packing_protein_path)
+            ligand_states_path ,protein_path = gnina_docking(protein_path, SDF_file, out_path, loop_num, PDBID, args.seed, idx)
+            # os.chdir(os.path.dirname(__file__))
+            protein_log_path = f"{out_path}/{PDBID}_0_{idx}_docking_ligand_gnina_score_out.log"
+            if args.rmsd:
+                # os.chdir(os.path.dirname(__file__))
+                protein_docking_df = read_first_docking_gnina_log(protein_log_path)
+                # os.chdir(os.path.dirname(__file__))
+                protein_docking_rmsd = []
+                nums = []
+                for ligand_state_path in ligand_states_path:
+                    rmsd_txt = f"{out_path}/rmsd.txt"
+                    os.system(f'obrms {SDF_file} {ligand_state_path } > {rmsd_txt}')
+                    rmsd = extract_rmsd_from_txt(rmsd_txt)
+                    protein_docking_rmsd.append(rmsd)
+                    nums.append(idx)
+                protein_docking_df = protein_docking_df.head(len(protein_docking_rmsd))
+                protein_docking_df['true_rmsd'] = protein_docking_rmsd
+                protein_docking_df['num'] = nums
+                # protein_docking_df.to_csv(f"{out_path}/0_{idx}_dockingscores.csv", index=False)
+                protein_docking_dataframes.append(protein_docking_df)
+        ligand_states_path, sorted_df = extract_protein_docking_top(protein_docking_dataframes, PDBID, out_path)
+        sorted_df.to_csv(f"{out_path}/0_dockingscores.csv", index=False)
+        # os.chdir(os.path.dirname(__file__))
+        protein_docking_dataframes = []
+        loop_num +=1
+
+        """induced fit stage"""
+        complex_graphs, pdb_path = construct_graph(ligand_states_path, loop_num)
+        score_list = []
+        k_means_file_list = []
+        packing_result_path = side_chain_packing(complex_graphs)
+        for idx, packing_protein_path in enumerate(packing_result_path):
+            os.chdir(os.path.dirname(__file__))
+            protein_path = extract_protein_packing_state(packing_protein_path)
+            ligand_states_path ,pdbqt_protein_path = gnina_docking(protein_path, SDF_file, out_path, loop_num, PDBID, args.seed, idx)
+            os.chdir(os.path.dirname(__file__))
+            protein_log_path = f"{out_path}/{PDBID}_1_{idx}_docking_ligand_gnina_score_out.log"
+            if args.rmsd:
+                protein_docking_df = read_first_docking_gnina_log(protein_log_path)
                 os.chdir(os.path.dirname(__file__))
-                loop_num = 0 
-                for idx, packing_protein_path in enumerate(packing_result_path):
-                    protein_path = extract_protein_packing_state(packing_protein_path)
-                    ligand_states_path ,protein_path = gnina_docking(protein_path, SDF_file, out_path, loop_num, PDBID, args.seed, idx)
-                    os.chdir(os.path.dirname(__file__))
-                    protein_log_path = f"{out_path}/{PDBID}_0_{idx}_docking_ligand_gnina_score_out.log"
-                    if args.rmsd:
-                        os.chdir(os.path.dirname(__file__))
-                        protein_docking_df = read_first_docking_gnina_log(protein_log_path)
-                        os.chdir(os.path.dirname(__file__))
-                        protein_docking_rmsd = []
-                        nums = []
-                        for ligand_state_path in ligand_states_path:
-                            rmsd_txt = f"{out_path}/rmsd.txt"
-                            os.system(f'obrms {SDF_file} {ligand_state_path } > {rmsd_txt}')
-                            rmsd = extract_rmsd_from_txt(rmsd_txt)
-                            protein_docking_rmsd.append(rmsd)
-                            nums.append(idx)
-                        protein_docking_df = protein_docking_df.head(len(protein_docking_rmsd))
-                        protein_docking_df['true_rmsd'] = protein_docking_rmsd
-                        protein_docking_df['num'] = nums
-                        # protein_docking_df.to_csv(f"{out_path}/0_{idx}_dockingscores.csv", index=False)
-                        protein_docking_dataframes.append(protein_docking_df)
-                ligand_states_path, sorted_df = extract_protein_docking_top(protein_docking_dataframes, PDBID, out_path)
-                sorted_df.to_csv(f"{out_path}/0_dockingscores.csv", index=False)
-                os.chdir(os.path.dirname(__file__))
-                protein_docking_dataframes = []
-                loop_num +=1
+                protein_docking_rmsd = []
+                nums = []
+                for ligand_state_path in ligand_states_path:
+                    rmsd_txt = f"{out_path}/rmsd.txt"
+                    os.system(f'obrms {SDF_file} {ligand_state_path } > {rmsd_txt}')
+                    rmsd = extract_rmsd_from_txt(rmsd_txt)
+                    protein_docking_rmsd.append(rmsd)
+                    nums.append(idx)
+                protein_docking_df = protein_docking_df.head(len(protein_docking_rmsd))
+                protein_docking_df['true_rmsd'] = protein_docking_rmsd
+                protein_docking_df['num'] = nums
 
-                """induced fit stage"""
-                complex_graphs, pdb_path = construct_graph(ligand_states_path, loop_num)
-                score_list = []
-                k_means_file_list = []
-                packing_result_path = side_chain_packing(complex_graphs)
-                for idx, packing_protein_path in enumerate(packing_result_path):
-                    os.chdir(os.path.dirname(__file__))
-                    protein_path = extract_protein_packing_state(packing_protein_path)
-                    ligand_states_path ,pdbqt_protein_path = gnina_docking(protein_path, SDF_file, out_path, loop_num, PDBID, args.seed, idx)
-                    os.chdir(os.path.dirname(__file__))
-                    protein_log_path = f"{out_path}/{PDBID}_1_{idx}_docking_ligand_gnina_score_out.log"
-                    if args.rmsd:
-                        protein_docking_df = read_first_docking_gnina_log(protein_log_path)
-                        os.chdir(os.path.dirname(__file__))
-                        protein_docking_rmsd = []
-                        nums = []
-                        for ligand_state_path in ligand_states_path:
-                            rmsd_txt = f"{out_path}/rmsd.txt"
-                            os.system(f'obrms {SDF_file} {ligand_state_path } > {rmsd_txt}')
-                            rmsd = extract_rmsd_from_txt(rmsd_txt)
-                            protein_docking_rmsd.append(rmsd)
-                            nums.append(idx)
-                        protein_docking_df = protein_docking_df.head(len(protein_docking_rmsd))
-                        protein_docking_df['true_rmsd'] = protein_docking_rmsd
-                        protein_docking_df['num'] = nums
+                protein_docking_dataframes.append(protein_docking_df)
+        merged_df = pd.concat(protein_docking_dataframes,ignore_index=True)
+        sorted_df = merged_df.sort_values('true_rmsd')
+        sorted_df.to_csv(f"{out_path}/1_dockingscores.csv", index=False)
 
-                        protein_docking_dataframes.append(protein_docking_df)
-                merged_df = pd.concat(protein_docking_dataframes,ignore_index=True)
-                sorted_df = merged_df.sort_values('true_rmsd')
-                sorted_df.to_csv(f"{out_path}/1_dockingscores.csv", index=False)
-
-                break
-            except Exception as e:
-                    print(f"{apo_id} error occurred, attempt {attempt}." )
-                    attempt += 1
+        break

@@ -70,8 +70,9 @@ def get_t_schedule(inference_steps):
 
 
 def set_time(complex_graphs, t, batchsize, all_atoms, device):
-    if complex_graphs['ligand'].num_nodes is not None:
-        complex_graphs['ligand'].node_t = {'t': t * torch.ones(complex_graphs['ligand'].num_nodes).to(device)}
+    if "ligand" in complex_graphs.keys():
+        if complex_graphs['ligand'].num_nodes is not None:
+            complex_graphs['ligand'].node_t = {'t': t * torch.ones(complex_graphs['ligand'].num_nodes).to(device)}
     complex_graphs['receptor'].node_t = {'t': t * torch.ones(complex_graphs['receptor'].num_nodes).to(device)}
     complex_graphs.complex_t = {'t': t * torch.ones(batchsize).to(device)}
     if all_atoms:

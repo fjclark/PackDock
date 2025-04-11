@@ -24,7 +24,10 @@ warnings.filterwarnings('ignore')
 def extract(ligand, pdb, key):
     parser = PDBParser()
     structure = parser.get_structure("protein", pdb)
-    ligand_positions = ligand.GetConformer().GetPositions()
+    try:
+        ligand_positions = ligand.GetConformer().GetPositions()
+    except Exception as e:
+        breakpoint()
     # Get distance between ligand positions (N_ligand, 3) and
     # residue positions (N_residue, 3) for each residue
     # only select residue with minimum distance of it is smaller than 5A
@@ -45,27 +48,25 @@ def extract(ligand, pdb, key):
     io.set_structure(structure)
     fn = "BS_tmp_"+str(key)+".pdb"
     io.save(fn, ResidueSelect())
-    try:
-        m2 = Chem.MolFromPDBFile(fn)#,removeHs=False)
-        #may contain metal atom, causing MolFromPDBFile return None
-        if m2 is None:
-            print("first read PDB fail",fn)
-            remove_zn_dir=f"{pocket_dir}/docker_result_remove_ZN"
-            if not os.path.exists(remove_zn_dir):
-                os.mkdir(remove_zn_dir)
-            cmd=f"cp {fn}   {remove_zn_dir}"
-            print(cmd)
-            os.system(cmd)
+    m2 = Chem.MolFromPDBFile(fn)#,removeHs=False)
+    #may contain metal atom, causing MolFromPDBFile return None
+    if m2 is None:
+        breakpoint()
+        print("first read PDB fail",fn)
+        remove_zn_dir=f"{pocket_dir}/docker_result_remove_ZN"
+        if not os.path.exists(remove_zn_dir):
+            os.makedirs(remove_zn_dir)
+        cmd=f"cp {fn}   {remove_zn_dir}"
+        print(cmd)
+        os.system(cmd)
 
-            fn_remove_zn=os.path.join(remove_zn_dir,fn.replace('.pdb','_remove_ZN.pdb'))
-            cmd=f"sed -e '/ZN/d'  {fn}  > {fn_remove_zn}"
-            os.system(cmd)
-            print("delete metal atom and get new pdb file",fn_remove_zn)
-            m2 = Chem.MolFromPDBFile(fn_remove_zn)#,removeHs=False)
-        else:
-            os.system("rm -f " + fn)
-    except:
-        print("Read PDB fail for other unknow reason",fn)
+        fn_remove_zn=os.path.join(remove_zn_dir,fn.replace('.pdb','_remove_ZN.pdb'))
+        cmd=f"sed -e '/ZN/d'  {fn}  > {fn_remove_zn}"
+        os.system(cmd)
+        print("delete metal atom and get new pdb file",fn_remove_zn)
+        m2 = Chem.MolFromPDBFile(fn_remove_zn)#,removeHs=False)
+    else:
+        os.system("rm -f " + fn)
 
 
     return m2
@@ -81,26 +82,34 @@ def preprocessor(ligand_pdb,receptor_fn):
     key = f"{pdbid}_{ligand_id}"
     data_dir = f"{pocket_dir}/{pdbid}_{ligand_id}"
     if not os.path.exists(data_dir):
-        os.mkdir(data_dir)
+        os.makedirs(data_dir)
     print(ligand_pdb)
     ligand = Chem.MolFromPDBFile(ligand_pdb, sanitize=False, removeHs=False)
 
-    try:
-        m2 = extract(ligand, receptor_fn,key)
-        PDBwriter = Chem.PDBWriter(f'{data_dir}/protein_pocket.pdb')
-        PDBwriter.write(m2)
-        PDBwriter.close()
-        src_ligand_pdb = ligand_pdb
-        dst_ligand = f"{data_dir}/ligand.pdb" 
-        shutil.copyfile(src_ligand_pdb, dst_ligand)
-        with open(os.path.join(data_dir,key), "wb") as fp:
-            pickle.dump((ligand, m2), fp, pickle.HIGHEST_PROTOCOL)   #binary file
-    except:
-        print(f'extract m2 failed {pdbid}_{ligand_id}')
-        # os.remove(data_dir)
-        # continue
+    m2 = extract(ligand, receptor_fn,key)
+    PDBwriter = Chem.PDBWriter(f'{data_dir}/protein_pocket.pdb')
+    PDBwriter.write(m2)
+    PDBwriter.close()
+    src_ligand_pdb = ligand_pdb
+    dst_ligand = f"{data_dir}/ligand.pdb" 
+    shutil.copyfile(src_ligand_pdb, dst_ligand)
+    with open(os.path.join(data_dir,key), "wb") as fp:
+        pickle.dump((ligand, m2), fp, pickle.HIGHEST_PROTOCOL)   #binary file
 
     return 0
+
+def align(stationary_protein:str, mobile_protein:str, output_name:str):
+    '''
+    Align the mobile_protein to stationary_protein and save the result to output_name
+    '''
+    from pymol import cmd
+    print("Aligning mobile protein to stationary protein...")
+
+    cmd.delete("all")
+    cmd.load(stationary_protein, "stationary_protein")
+    cmd.load(mobile_protein, "mobile_protein")
+    cmd.align("polymer and name CA and mobile_protein", "polymer and name CA and stationary_protein")
+    cmd.save(output_name, "mobile_protein")
 
 
 if __name__ == '__main__':
@@ -110,18 +119,21 @@ if __name__ == '__main__':
     from multiprocessing import Pool, cpu_count
     import os
     import pandas as pd
-    group = "group3"
-    apolist = pd.read_csv(f"./apo2holo_datasets/{group}.list")
-    total_num = len(apolist["PDBID"])
+    # group = "group3"
+    # apolist = pd.read_csv(f"./apo2holo_datasets/{group}.list")
+    # total_num = len(apolist["PDBID"])
     # i = 0
     file_tuple_list = []
     apo_tuple_list = []
-    pocket_dir = f"./Apo_Holo_fulldata_aligned_pocket_{group}_12a_new"
-    for i, apo_id in enumerate(apolist['PDBID']):
-        apo_dir = f"./apo2holo_datasets/{group}/{apo_id}"
-        ligand_dir = f"./apo2holo_datasets/{group}/{apo_id}/Ligands"
-        apo_receptor_fn=os.path.join(apo_dir + '/apo_aligned.pdb')
-        holo_receptor_fn=os.path.join(apo_dir + '/template_aligned.pdb')
+    pocket_dir = "./MERS-pocket-dir"
+    for apo_id in os.listdir("./full_run-MERS"):
+        protein_dir = f"./full_run-MERS/mers-protein"
+        ligand_dir = f"./full_run-MERS/mers-protein/Ligands"
+        # Cretae apo aligned and template aligned by aligning to refined
+        # align(apo_dir + '/refined.pdb', apo_dir + '/apo.pdb', apo_dir + '/apo_aligned.pdb')
+        # align(apo_dir + '/refined.pdb', apo_dir + '/template.pdb', apo_dir + '/template_aligned.pdb')
+        apo_receptor_fn=os.path.join(protein_dir + '/protein.pdb')
+        # holo_receptor_fn=os.path.join(protein_dir + '/template_aligned.pdb')
         ligand_pdb_fn_list = glob.glob(os.path.join(ligand_dir, '*.pdb'))
         for ligand_pdb_fn in ligand_pdb_fn_list:
             apo_tuple_list.append((ligand_pdb_fn, apo_receptor_fn))

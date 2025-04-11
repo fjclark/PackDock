@@ -30,7 +30,10 @@ def get_transformation_mask(pyg_data, tor_idx, backbone_idx,pocket_outside_idx):
 
     for i in range(0, edges.shape[0]):
         G2 = G.to_undirected()
-        G2.remove_edge(*edges[i])
+        try:
+            G2.remove_edge(*edges[i])
+        except:
+            breakpoint()
         u, v = edges[i]
         if not nx.is_connected(G2):
             all_connected_compoents = sorted(nx.connected_components(G2), key=len)

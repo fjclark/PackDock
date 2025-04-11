@@ -1,0 +1,1 @@
+RMSD ./data/Apo_Holo_fulldata_aligned_pocket_group3_12a_new/1wfcA_3HA8A/ligand.pdb:= 7.55752

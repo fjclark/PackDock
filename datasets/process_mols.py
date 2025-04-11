@@ -1007,9 +1007,9 @@ def extract_rotamer(residue,AA_name,disulfide_bond_res):
             else:
                 pass
     else:
-        # raise ValueError("Unsupported amino acid: {}".format(AA_name))
+        raise ValueError("Unsupported amino acid: {}".format(AA_name))
         # print("Unsupported amino acid: {}".format(AA_name))
-        pass
+        # pass
     while np.count_nonzero(src_idx) != np.count_nonzero(dst_idx):   #When only one of the atoms of the possible rotating bond is identified, the rotating bond is not rotated
         if np.count_nonzero(src_idx) > np.count_nonzero(dst_idx):
             last_nonzero_index = np.argwhere(src_idx)[::-1][0][0]

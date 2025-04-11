@@ -1,0 +1,13 @@
+  This is the repository containing the dataset for the 
+  "Holo protein conformation generation from apo structures by ligand binding site refinement"
+
+  group1.list : list of all the PDB codes for all targets in group 1.
+  group2.list : list of all the PDB codes for all targets in group 2.
+  group3.list : list of all the PDB codes for all targets in group 3.
+
+  Folder group1, group2 and group3 contain target directories.
+  Each target directory contains the apo structure, template structure, MD-refined structure and a "Ligands" folder containing clustered ligands.
+  Each ligand file is named according to the PDB id and residue number. 
+
+  Reference:
+  Zhang J, Li H, Huang S-Y. Holo protein conformation generation from apo structures by ligand binding site refinement, 2022, submitted. 
